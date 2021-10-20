@@ -16,6 +16,7 @@ import {
   TableToolbarSearch,
   Pagination,
   TableToolbarContent,
+  Button,
 } from 'carbon-components-react'
 
 import React, { useEffect, useState } from 'react'
@@ -36,6 +37,11 @@ function TableSector(props) {
   //indication variable to notify sub-component that data is ready or not 
   const [isLoaded, setLoaded] = useState(false);
 
+  //indication variable to notify the backend to fetch data from database
+  const [saveDB, setSaveDB] = useState(true);
+
+  //indication variable to run a check on if there is a database table ready for use
+  const [startUp, setStartUp] = useState(true);
 
   //rerender the page when current page number change or current page size change
   useEffect(() => {
@@ -44,6 +50,7 @@ function TableSector(props) {
       const data = {
         page: currentPage,
         pageSize: currentPageSize,
+        dataBase: saveDB
       }
 
       //make post request and send page number and page size to API
@@ -52,38 +59,91 @@ function TableSector(props) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
       })
+
+      //put data to table once fetched back
       const listArr = await response.json();
       setRows(listArr.message);
       setLoaded(true);
     }
 
-    getResult();
-  }, [currentPageSize, currentPage]);
+    //run this api after checking if the database table is in place
+    if (!startUp) {
+      getResult();
+    }
+
+  }, [currentPageSize, currentPage, saveDB, startUp]);
 
 
   //rerender page on page load and fetch the total number of repos from IBM Github
   useEffect(() => {
     async function getResult() {
+      const data = {
+        dataBase: saveDB
+      }
       const response = await fetch("http://localhost:5000/ibm", {
-        method: "GET",
+        method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
       })
       const totalNumber = await response.json();
+
       setTotalItems(totalNumber.message);
     }
+    
+    //run this api after checking if the database table is in place
+    if (!startUp) {
+      getResult();
+    }
+  }, [saveDB, startUp])
+
+
+  //set data source to database once data is downloaded
+  useEffect(() => {
+    if (totalItems !== 0) {
+      setSaveDB(true);
+    }
+  }, [totalItems])
+
+
+  //run a check on start up to see if the database table is in place
+  useEffect(() => {
+    async function getResult() {
+      const response = await fetch("http://localhost:5000/checkDB", {
+        method: "GET",
+        headers: { "Content-Type": "application/json" }
+      })
+      const totalNumber = await response.json();
+
+      if (totalNumber.message === 0) {
+        setSaveDB(false);
+      } else {
+        setTotalItems(totalNumber.message);
+      }
+      setStartUp(false);
+    }
+
     getResult();
+
   }, [])
 
+
+  //handle on click when update button clicked, call api to update the database
+  async function handleClick() {
+    const data = {
+      pages: Math.ceil(totalItems / currentPageSize),
+    }
+
+    const response = await fetch("http://localhost:5000/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    })
+    const complete = await response.json();
+    alert(complete.message);
+  }
   return (
     isLoaded ?
-      <div>
-        {/*<div style = {{"width": "90vw", "display":"flex"}}>
-        <Search 
-          size ="sm"
-        ></Search>
-        <Button 
-          size="sm"/>
-        </div>*/}
+      <div className="mainBody">
         <DataTable
           rows={rows}
           headers={props.headers}
@@ -103,6 +163,8 @@ function TableSector(props) {
                 <TableToolbarContent>
                   {/* pass in `onInputChange` change here to make filtering work */}
                   <TableToolbarSearch onChange={onInputChange} />
+                  {/* only allow update when data table is in place*/}
+                  <Button disabled={!saveDB} onClick={handleClick}>Refresh DataBase</Button>
                 </TableToolbarContent>
               </TableToolbar>
               <Table {...getTableProps()}>
@@ -134,27 +196,30 @@ function TableSector(props) {
             </TableContainer>
           )}
         />
-        <Pagination
-          totalItems={totalItems}
-          backwardText="Previous page"
-          forwardText="Next page"
-          pageSize={currentPageSize}
-          pageSizes={[30, 50]}
-          page={currentPage}
-          itemsPerPageText="Items per page"
-          onChange={({ page, pageSize }) => {
-            if (pageSize !== currentPageSize) {
-              setCurrentPageSize(pageSize);
-              setLoaded(false);
-            }
-            if (page !== currentPage) {
-              setPage(page);
-              setLoaded(false);
-            }
-          }} />
+        {/* ready when total number of repositories fetched */}
+        {totalItems === 0 ?
+          <Pagination
+            totalItems={totalItems}
+            backwardText="Previous page"
+            forwardText="Next page"
+            pageSize={currentPageSize}
+            pageSizes={[30, 50]}
+            page={currentPage}
+            itemsPerPageText="Items per page"
+            onChange={({ page, pageSize }) => {
+              if (pageSize !== currentPageSize) {
+                setCurrentPageSize(pageSize);
+                setLoaded(false);
+              }
+              if (page !== currentPage) {
+                setPage(page);
+                setLoaded(false);
+              }
+            }} /> :
+          <PaginationSkeleton />}
       </div>
       :
-      <div>
+      <div className="mainBody">
         <DataTableSkeleton rows={props.rows} headers={props.headers} >
         </DataTableSkeleton>
         <PaginationSkeleton />
